@@ -64,9 +64,13 @@ jobs:
 
       # Step 5: Run automated tests
 
+      
       - name: Run Pytest
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
-          pytest -v
+          python -m pytest -v
+          
 
       # Step 6: Completion
 
