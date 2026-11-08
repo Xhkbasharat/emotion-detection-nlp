@@ -98,7 +98,7 @@ emotion-detection-nlp/
 
 1. Clone Repository
 
-git clone https://github.com/YOUR-USERNAME/emotion-detection-nlp.git
+git clone https://github.com/xhkbasharat/emotion-detection-nlp.git
 
 2. Navigate to Project
 
