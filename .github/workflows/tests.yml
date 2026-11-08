@@ -2,7 +2,7 @@
 name: Emotion Detection CI Pipeline
 
 # ==========================================
-# TRIGGERS
+# WORKFLOW TRIGGERS
 # ==========================================
 
 on:
@@ -13,6 +13,8 @@ on:
   pull_request:
     branches:
       - main
+
+  workflow_dispatch:
 
 # ==========================================
 # PERMISSIONS
@@ -35,47 +37,49 @@ jobs:
 
     steps:
 
-      # Step 1: Checkout repository
+      # 1. Checkout repository
 
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      # Step 2: Setup Python
+      # 2. Setup Python
 
       - name: Setup Python Environment
         uses: actions/setup-python@v5
-
         with:
           python-version: "3.11"
           cache: "pip"
 
-      # Step 3: Install dependencies
+      # 3. Install dependencies
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Step 4: Validate Python syntax
+      # 4. Validate Python syntax
 
       - name: Check Python Syntax
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           python -m compileall -q app training tests
 
-      # Step 5: Run automated tests
+      # 5. Run automated tests
 
-      
       - name: Run Pytest
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           python -m pytest -v
-          
 
-      # Step 6: Completion
+      # 6. Complete pipeline
 
       - name: Pipeline Completed
         if: success()
         run: |
-          echo "Emotion Detection CI Pipeline Passed!"
+          echo "================================"
+          echo "EMOTION DETECTION CI PASSED"
+          echo "All automated tests completed."
+          echo "================================"
           
