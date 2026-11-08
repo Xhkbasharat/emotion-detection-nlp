@@ -1,0 +1,15 @@
+
+torch
+transformers>=4.46,<5
+datasets
+scikit-learn
+pandas
+numpy
+accelerate
+streamlit
+fastapi
+uvicorn[standard]
+pytest
+httpx
+matplotlib
+seaborn
