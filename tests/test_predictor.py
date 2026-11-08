@@ -1,12 +1,15 @@
 
 """
-Automated Tests for Emotion Detection
+Advanced Automated Tests for Emotion Detection
 Framework: Pytest
+Model: DistilBERT
+CI-compatible testing without model checkpoints
 """
 
 import pytest
-from unittest.mock import Mock
+import torch
 
+from unittest.mock import Mock
 from fastapi.testclient import TestClient
 
 from app.predictor import EmotionPredictor
@@ -14,7 +17,60 @@ from app.api import app
 
 
 # ==========================================
-# 1. INPUT VALIDATION TESTS
+# 1. MOCK PREDICTOR FOR CI
+# ==========================================
+
+class FakePredictor:
+
+    def predict(self, text):
+
+        return {
+            "text": text,
+            "predicted_emotion": "joy",
+            "confidence": 0.95,
+            "all_emotions": {
+                "sadness": 0.01,
+                "joy": 0.95,
+                "love": 0.01,
+                "anger": 0.01,
+                "fear": 0.01,
+                "surprise": 0.01
+            }
+        }
+
+    def top_emotions(self, text, top_k=3):
+
+        scores = self.predict(text)["all_emotions"]
+
+        return sorted(
+            scores.items(),
+            key=lambda item: item[1],
+            reverse=True
+        )[:top_k]
+
+
+# ==========================================
+# 2. API TEST FIXTURE
+# ==========================================
+
+@pytest.fixture
+def client(monkeypatch):
+
+    import app.api as api_module
+
+    # Prevent real model loading during CI tests
+    monkeypatch.setattr(
+        api_module,
+        "EmotionPredictor",
+        FakePredictor
+    )
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+# ==========================================
+# 3. INPUT VALIDATION TESTS
 # ==========================================
 
 def test_empty_text_validation():
@@ -24,7 +80,6 @@ def test_empty_text_validation():
     )
 
     with pytest.raises(ValueError):
-
         predictor.predict("")
 
 
@@ -35,7 +90,6 @@ def test_whitespace_validation():
     )
 
     with pytest.raises(ValueError):
-
         predictor.predict("   ")
 
 
@@ -46,7 +100,6 @@ def test_invalid_input_type():
     )
 
     with pytest.raises(ValueError):
-
         predictor.predict(123)
 
 
@@ -57,12 +110,11 @@ def test_text_length_validation():
     )
 
     with pytest.raises(ValueError):
-
         predictor.predict("A" * 5001)
 
 
 # ==========================================
-# 2. PREDICTION OUTPUT TESTS
+# 4. PREDICTION ENGINE TESTS
 # ==========================================
 
 def test_prediction_output_structure():
@@ -72,10 +124,8 @@ def test_prediction_output_structure():
     )
 
     predictor._validate_text = lambda text: text.strip()
-
     predictor._tokenize = Mock(return_value={})
-
-    predictor.device = "cpu"
+    predictor.device = torch.device("cpu")
 
     predictor.model = Mock()
 
@@ -88,20 +138,16 @@ def test_prediction_output_structure():
         5: "surprise"
     }
 
-    import torch
-
     predictor.model.return_value.logits = torch.tensor(
         [[0.1, 4.0, 0.2, 0.1, 0.1, 0.1]]
     )
 
     result = predictor.predict("I am happy")
 
-    assert "text" in result
-    assert "predicted_emotion" in result
+    assert result["predicted_emotion"] == "joy"
     assert "confidence" in result
     assert "all_emotions" in result
-
-    assert result["predicted_emotion"] == "joy"
+    assert len(result["all_emotions"]) == 6
 
 
 def test_probability_distribution():
@@ -111,10 +157,8 @@ def test_probability_distribution():
     )
 
     predictor._validate_text = lambda text: text.strip()
-
     predictor._tokenize = Mock(return_value={})
-
-    predictor.device = "cpu"
+    predictor.device = torch.device("cpu")
 
     predictor.model = Mock()
 
@@ -127,24 +171,16 @@ def test_probability_distribution():
         5: "surprise"
     }
 
-    import torch
-
     predictor.model.return_value.logits = torch.tensor(
         [[1.0, 2.0, 3.0, 1.0, 1.0, 1.0]]
     )
 
     result = predictor.predict("Test sentence")
 
-    total = sum(
-        result["all_emotions"].values()
-    )
+    total = sum(result["all_emotions"].values())
 
     assert abs(total - 1.0) < 0.001
 
-
-# ==========================================
-# 3. TOP EMOTION TESTS
-# ==========================================
 
 def test_top_emotions():
 
@@ -153,19 +189,7 @@ def test_top_emotions():
     )
 
     predictor.predict = Mock(
-        return_value={
-            "text": "I am happy",
-            "predicted_emotion": "joy",
-            "confidence": 0.8,
-            "all_emotions": {
-                "joy": 0.8,
-                "love": 0.1,
-                "surprise": 0.05,
-                "sadness": 0.02,
-                "anger": 0.02,
-                "fear": 0.01
-            }
-        }
+        return_value=FakePredictor().predict("I am happy")
     )
 
     results = predictor.top_emotions(
@@ -184,7 +208,6 @@ def test_invalid_top_k():
     )
 
     with pytest.raises(ValueError):
-
         predictor.top_emotions(
             "I am happy",
             top_k=0
@@ -192,16 +215,8 @@ def test_invalid_top_k():
 
 
 # ==========================================
-# 4. API TESTS
+# 5. API ENDPOINT TESTS
 # ==========================================
-
-@pytest.fixture
-def client():
-
-    with TestClient(app) as test_client:
-
-        yield test_client
-
 
 def test_home_endpoint(client):
 
@@ -209,9 +224,7 @@ def test_home_endpoint(client):
 
     assert response.status_code == 200
 
-    assert (
-        response.json()["status"] == "running"
-    )
+    assert response.json()["status"] == "running"
 
 
 def test_health_endpoint(client):
@@ -220,7 +233,7 @@ def test_health_endpoint(client):
 
     assert response.status_code == 200
 
-    assert "model_loaded" in response.json()
+    assert response.json()["model_loaded"] is True
 
 
 def test_invalid_api_request(client):
@@ -244,34 +257,10 @@ def test_missing_text_api(client):
 
 
 # ==========================================
-# 5. API MOCK PREDICTION TEST
+# 6. API PREDICTION TEST
 # ==========================================
 
-def test_prediction_api(client, monkeypatch):
-
-    import app.api as api_module
-
-    mock_predictor = Mock()
-
-    mock_predictor.predict.return_value = {
-        "text": "I am happy",
-        "predicted_emotion": "joy",
-        "confidence": 0.95,
-        "all_emotions": {
-            "sadness": 0.01,
-            "joy": 0.95,
-            "love": 0.01,
-            "anger": 0.01,
-            "fear": 0.01,
-            "surprise": 0.01
-        }
-    }
-
-    monkeypatch.setattr(
-        api_module,
-        "predictor",
-        mock_predictor
-    )
+def test_prediction_api(client):
 
     response = client.post(
         "/predict",
@@ -280,10 +269,31 @@ def test_prediction_api(client, monkeypatch):
 
     assert response.status_code == 200
 
-    assert response.json()["success"] is True
+    data = response.json()
 
-    assert (
-        response.json()["data"]["predicted_emotion"]
-        == "joy"
-  )
-  
+    assert data["success"] is True
+
+    assert data["data"]["predicted_emotion"] == "joy"
+
+
+# ==========================================
+# 7. TOP EMOTIONS API TEST
+# ==========================================
+
+def test_top_emotions_api(client):
+
+    response = client.post(
+        "/predict/top",
+        json={"text": "I am very happy"}
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["success"] is True
+
+    assert len(data["top_emotions"]) == 3
+
+    assert data["top_emotions"][0]["emotion"] == "joy"
+    
